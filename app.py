@@ -34,25 +34,17 @@ st.markdown("""
         color: #666;
         margin-bottom: 2rem;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        margin: 0.5rem 0;
+    .answer-box {
+        background-color: #e8f4f8;
+        padding: 25px;
+        border-radius: 10px;
+        border-left: 5px solid #1f77b4;
+        margin: 20px 0;
     }
-    .success-box {
-        background-color: #d4edda;
-        border: 1px solid #c3e6cb;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        margin: 1rem 0;
-    }
-    .source-card {
-        background-color: #e7f3ff;
-        border-left: 4px solid #1f77b4;
-        padding: 1rem;
-        margin: 0.5rem 0;
-        border-radius: 0.25rem;
+    .answer-text {
+        font-size: 1.1em;
+        line-height: 1.8;
+        color: #1a1a1a;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -99,11 +91,19 @@ def main():
         chunk_size = st.slider("Chunk Size", 256, 1024, 512, 128)
         top_k = st.slider("Retrieved Chunks", 3, 10, 5, 1)
         search_type = st.selectbox("Search Type", ["Hybrid Search", "Vector Only"])
-        
+
+        # API Key for LLM (Anthropic)
+        api_key = st.text_input(
+            "Anthropic API Key (for enhanced answers)",
+            type="password",
+            help="Enter your Anthropic API key to enable AI-powered question answering. Leave empty to use basic search."
+        )
+
         # Store in session state
         st.session_state['chunk_size'] = chunk_size
         st.session_state['top_k'] = top_k
         st.session_state['search_type'] = search_type
+        st.session_state['api_key'] = api_key
         
         st.markdown("---")
         
@@ -123,10 +123,8 @@ def main():
     
     # Main content area
     if st.session_state['vector_store'] is None:
-        # Welcome screen
         show_welcome_screen()
     else:
-        # Q&A Interface
         show_qa_interface()
 
 def show_welcome_screen():
@@ -170,28 +168,16 @@ def show_welcome_screen():
 def process_document(uploaded_file):
     """Process uploaded document"""
     try:
-        # Import required modules
         from ingestion.parser import MultiModalParser
         from ingestion.ocr import OCREngine
         from chunking.semantic_chunker import SemanticChunker
         from embedding.multimodal_vector_store import MultiModalVectorStore
-        
     except ImportError as e:
-        st.error(f"""
-        ❌ Missing required modules. Please ensure all files are in place:
-        
-        - ingestion/parser.py
-        - ingestion/ocr.py
-        - chunking/semantic_chunker.py
-        - retrieval/vector_store.py
-        
-        Error: {str(e)}
-        """)
+        st.error(f"❌ Missing required modules: {str(e)}")
         return
     
     with st.spinner("🔄 Processing document... This may take a minute."):
         try:
-            # Save uploaded file temporarily
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
                 tmp_path = tmp_file.name
@@ -199,13 +185,11 @@ def process_document(uploaded_file):
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            # Step 1: Parse document
             status_text.text("📖 Parsing document...")
             progress_bar.progress(20)
             parser = MultiModalParser()
             elements = parser.parse_document(tmp_path)
             
-            # Step 2: OCR on images
             status_text.text("🔍 Running OCR on images...")
             progress_bar.progress(40)
             ocr_engine = OCREngine()
@@ -213,7 +197,6 @@ def process_document(uploaded_file):
                 if elem.type == 'image':
                     elem.metadata['ocr_text'] = ocr_engine.extract_text_from_image(elem.content)
             
-            # Step 3: Chunk content
             status_text.text("✂️ Chunking content...")
             progress_bar.progress(60)
             chunk_size = st.session_state.get('chunk_size', 512)
@@ -233,7 +216,6 @@ def process_document(uploaded_file):
                         'ocr_text': elem.metadata['ocr_text']
                     })
             
-            # Step 4: Index in vector store
             status_text.text("🗄️ Indexing in vector database...")
             progress_bar.progress(80)
             vector_store = MultiModalVectorStore(collection_name=uploaded_file.name.replace('.pdf', ''))
@@ -242,48 +224,30 @@ def process_document(uploaded_file):
             progress_bar.progress(100)
             status_text.empty()
             
-            # Store in session state
             st.session_state['vector_store'] = vector_store
             st.session_state['processed_file'] = uploaded_file.name
             st.session_state['num_chunks'] = len(chunks)
             
-            # Clean up
             os.unlink(tmp_path)
             
-            # Success message
-            st.markdown(f"""
-            <div class="success-box">
-                <h3>✅ Document Processed Successfully!</h3>
-                <p><strong>File:</strong> {uploaded_file.name}</p>
-                <p><strong>Elements extracted:</strong> {len(elements)} (Text: {sum(1 for e in elements if e.type=='text')}, 
-                Tables: {sum(1 for e in elements if e.type=='table')}, 
-                Images: {sum(1 for e in elements if e.type=='image')})</p>
-                <p><strong>Chunks created:</strong> {len(chunks)}</p>
-                <p><strong>Vectors indexed:</strong> {vector_store.get_stats()['total_vectors']}</p>
-            </div>
-            """, unsafe_allow_html=True)
-            
+            st.success(f"✅ Processed {len(elements)} elements into {len(chunks)} searchable chunks!")
             st.balloons()
             st.rerun()
             
         except Exception as e:
-            st.error(f"❌ Error processing document: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
+            st.error(f"❌ Error: {str(e)}")
 
 def show_qa_interface():
     """Display Q&A interface"""
     st.markdown(f"### 💬 Ask Questions About: {st.session_state['processed_file']}")
     
-    # Initialize query in session state if not exists
     if 'current_query' not in st.session_state:
         st.session_state['current_query'] = ''
     
-    # Query input
     query = st.text_input(
         "Enter your question:",
         value=st.session_state.get('current_query', ''),
-        placeholder="e.g., What are the main findings in this document?",
+        placeholder="e.g., What are the main findings?",
         key="query_input"
     )
     
@@ -295,101 +259,104 @@ def show_qa_interface():
             st.session_state['current_query'] = ''
             st.rerun()
     
-    # Sample questions
-    st.markdown("**💡 Try these sample questions:**")
+    st.markdown("**💡 Try these:**")
     sample_cols = st.columns(3)
-    sample_questions = [
-        "What is the main topic?",
-        "Summarize key findings",
-        "What data is in tables?"
-    ]
+    samples = ["What is the main topic?", "Summarize key findings", "What projects are mentioned?"]
     
-    for i, (col, question) in enumerate(zip(sample_cols, sample_questions)):
+    for i, (col, question) in enumerate(zip(sample_cols, samples)):
         if col.button(question, key=f"sample_{i}"):
             st.session_state['current_query'] = question
             st.rerun()
     
-    # Process query
     if search_button and query:
         perform_search(query)
 
 def perform_search(query):
     """Perform search and display results"""
-    try:
-        from generation.qa_engine import QAEngine
-    except ImportError:
-        # Fallback: basic search without QA engine
-        st.warning("QA Engine not available. Showing basic search results.")
-        show_basic_search(query)
-        return
-    
-    with st.spinner("🔍 Searching..."):
+    with st.spinner("🔍 Generating answer..."):
         try:
+            from generation.qa_engine import QAEngine
+
             vector_store = st.session_state['vector_store']
             top_k = st.session_state.get('top_k', 5)
             search_type = st.session_state.get('search_type', 'Hybrid Search')
+            api_key = st.session_state.get('api_key', '')
+
+            qa_engine = QAEngine(vector_store, api_key=api_key)
+            result = qa_engine.generate_answer(
+                query=query,
+                use_hybrid=(search_type == "Hybrid Search"),
+                top_k=top_k
+            )
             
-            # Perform search
-            if search_type == "Hybrid Search":
-                results = vector_store.hybrid_search(query, top_k=top_k)
-            else:
-                results = vector_store.retrieve(query, top_k=top_k)
-            
-            if not results:
-                st.warning("No relevant content found. Try rephrasing your question.")
-                return
-            
-            # Display answer (simplified version without LLM)
-            st.markdown("### 📝 Answer")
+            # Display answer prominently
+            st.markdown("### 💡 Answer")
             st.markdown(f"""
-            Based on the retrieved context, here are the most relevant sections for your query: "{query}"
+            <div class="answer-box">
+                <div class="answer-text">{result['answer']}</div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            The system found {len(results)} relevant sections across different pages of the document.
-            """)
+            # Metrics
+            col1, col2, col3 = st.columns(3)
+            col1.metric("Sources", len(result['sources']))
+            col2.metric("Retrieval", f"{result['retrieval_time_ms']}ms")
+            col3.metric("Generation", f"{result['generation_time_ms']}ms")
             
-            # Display sources
-            st.markdown("### 📚 Source Documents")
+            st.markdown("---")
             
-            for i, result in enumerate(results, 1):
-                with st.expander(
-                    f"Source {i} - Page {result['metadata']['page']} ({result['metadata']['type']}) "
-                    f"- Relevance: {result.get('hybrid_score', 1-result.get('distance', 0)):.2%}"
-                ):
-                    st.markdown(f"**Content:**")
-                    st.write(result['content'][:500] + "..." if len(result['content']) > 500 else result['content'])
+            # Sources
+            if result['sources']:
+                st.markdown("### 📚 Source References")
+                for i, source in enumerate(result['sources'], 1):
+                    conf = source.get('confidence', 0) * 100
+                    badge = "🟢" if conf > 70 else "🟡" if conf > 50 else "🟠"
                     
-                    st.markdown(f"**Metadata:**")
-                    st.json({
-                        'page': result['metadata']['page'],
-                        'type': result['metadata']['type'],
-                        'source': result['metadata'].get('source', 'unknown'),
-                        'relevance_score': f"{result.get('hybrid_score', 1-result.get('distance', 0)):.4f}"
-                    })
-            
+                    with st.expander(
+                        f"{badge} Source {i} - Page {source['page']} - {conf:.0f}% relevance",
+                        expanded=(i == 1)
+                    ):
+                        st.info(source['content'])
+                        
+        except ImportError:
+            st.warning("⚠️ Using basic search mode")
+            show_basic_search(query)
         except Exception as e:
-            st.error(f"❌ Error during search: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
+            st.error(f"❌ Error: {str(e)}")
 
 def show_basic_search(query):
-    """Show basic search results without QA engine"""
+    """Basic search fallback"""
     vector_store = st.session_state['vector_store']
     top_k = st.session_state.get('top_k', 5)
+    search_type = st.session_state.get('search_type', 'Hybrid Search')
     
-    results = vector_store.retrieve(query, top_k=top_k)
+    if search_type == "Hybrid Search":
+        results = vector_store.hybrid_search(query, top_k=top_k)
+    else:
+        results = vector_store.retrieve(query, top_k=top_k)
     
     if not results:
         st.warning("No results found.")
         return
     
-    st.markdown("### 🔍 Search Results")
-    for i, result in enumerate(results, 1):
-        st.markdown(f"""
-        <div class="source-card">
-            <strong>Result {i}</strong> - Page {result['metadata']['page']} ({result['metadata']['type']})<br>
-            {result['content'][:300]}...
-        </div>
-        """, unsafe_allow_html=True)
+    st.markdown("### 💡 Answer")
+    top = results[0]
+    answer = top['content'][:500] + "..."
+    
+    st.markdown(f"""
+    <div class="answer-box">
+        <div class="answer-text">{answer}</div>
+        <p style="margin-top: 15px; color: #666;"><strong>Source:</strong> Page {top['metadata']['page']}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("---")
+    st.markdown("### 📚 Additional Sources")
+    
+    for i, result in enumerate(results[1:], 2):
+        score = result.get('hybrid_score', 0.5)
+        with st.expander(f"Source {i} - Page {result['metadata']['page']} - {score:.0%} relevance"):
+            st.write(result['content'][:300] + "...")
 
 if __name__ == "__main__":
     main()

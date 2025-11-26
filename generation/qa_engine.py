@@ -1,30 +1,27 @@
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any
 import time
 import logging
-
-if TYPE_CHECKING:
-    from your_vector_store_module import MultiModalVectorStore  # Adjust this import path accordingly
+import os
 
 class QAEngine:
     """
     Generates answers using retrieved context from a vector store.
-
-    Attributes:
-        vector_store (MultiModalVectorStore): The vector store instance used for document retrieval.
-
-    Methods:
-        generate_answer: Retrieves relevant documents and generates an answer with citations.
     """
 
-    def __init__(self, vector_store: 'MultiModalVectorStore'):
+    def __init__(self, vector_store, api_key=None):
         """
         Initialize QAEngine with a vector store.
 
         Args:
-            vector_store (MultiModalVectorStore): Vector store for retrieving relevant contexts.
+            vector_store: Vector store for retrieving relevant contexts.
+            api_key (str, optional): Anthropic API key. If not provided, falls back to environment variable.
         """
         self.vector_store = vector_store
         self.logger = logging.getLogger(__name__)
+
+        # Check if Anthropic API key is available (from parameter or environment)
+        self.api_key = api_key or os.environ.get('ANTHROPIC_API_KEY')
+        self.use_llm = self.api_key is not None
 
     def generate_answer(self, query: str, use_hybrid: bool = True, top_k: int = 5) -> Dict[str, Any]:
         """
@@ -32,16 +29,11 @@ class QAEngine:
 
         Args:
             query (str): The user query string.
-            use_hybrid (bool, optional): Whether to use hybrid search or simple retrieval. Defaults to True.
+            use_hybrid (bool, optional): Whether to use hybrid search. Defaults to True.
             top_k (int, optional): Number of top documents to retrieve. Defaults to 5.
 
         Returns:
-            Dict[str, Any]: A dictionary including:
-                - 'answer': The generated answer string.
-                - 'sources': List of source metadata and excerpts.
-                - 'context': Concatenated context from retrieved documents.
-                - 'retrieval_time_ms': Time spent on retrieval in milliseconds.
-                - 'generation_time_ms': Time spent on answer generation in milliseconds.
+            Dict[str, Any]: Dictionary with answer, sources, context, and timings.
         """
         start_time = time.time()
 
@@ -60,7 +52,7 @@ class QAEngine:
         if not retrieved:
             self.logger.warning("No documents retrieved for the query.")
             return {
-                'answer': "No relevant documents found to answer your query.",
+                'answer': "I couldn't find any relevant information in the document to answer your question. Please try rephrasing or asking about a different topic.",
                 'sources': [],
                 'context': "",
                 'retrieval_time_ms': int(retrieval_time * 1000),
@@ -71,8 +63,13 @@ class QAEngine:
         sources = self._extract_sources(retrieved)
 
         generation_start = time.time()
-        # Generate answer using LLM (currently placeholder)
-        answer = self._generate_with_llm(query, context)
+        
+        # Generate answer using LLM if available, otherwise use smart fallback
+        if self.use_llm:
+            answer = self._generate_with_anthropic(query, context)
+        else:
+            answer = self._generate_smart_fallback(query, retrieved)
+            
         generation_time = time.time() - generation_start
 
         return {
@@ -84,32 +81,17 @@ class QAEngine:
         }
 
     def _build_context(self, retrieved_docs: List[Dict[str, Any]]) -> str:
-        """
-        Build a concatenated context string from retrieved documents.
-
-        Args:
-            retrieved_docs (List[Dict[str, Any]]): List of retrieved document dictionaries.
-
-        Returns:
-            str: Concatenated string of source information and their content snippets.
-        """
+        """Build a concatenated context string from retrieved documents."""
         context_parts = []
         for i, doc in enumerate(retrieved_docs):
             page = doc.get('metadata', {}).get('page', 'unknown')
-            content_snippet = doc.get('content', '')[:500].replace('\n', ' ')
-            context_parts.append(f"[Source {i+1}, Page {page}]: {content_snippet}")
+            doc_type = doc.get('metadata', {}).get('type', 'text')
+            content = doc.get('content', '')[:800]  # Increased snippet size
+            context_parts.append(f"[Document {i+1} - Page {page} - Type: {doc_type}]\n{content}")
         return "\n\n".join(context_parts)
 
     def _extract_sources(self, retrieved_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """
-        Extract source metadata and content snippets from retrieved documents.
-
-        Args:
-            retrieved_docs (List[Dict[str, Any]]): List of retrieved document dictionaries.
-
-        Returns:
-            List[Dict[str, Any]]: List of dictionaries containing source info.
-        """
+        """Extract source metadata from retrieved documents."""
         sources = []
         for doc in retrieved_docs:
             metadata = doc.get('metadata', {})
@@ -117,42 +99,75 @@ class QAEngine:
                 'type': metadata.get('type', 'unknown'),
                 'page': metadata.get('page', 'unknown'),
                 'confidence': 1 - doc.get('distance', 0),
-                'content': (doc.get('content', '')[:200] + '...').replace('\n', ' ')
+                'content': (doc.get('content', '')[:300] + '...').replace('\n', ' ')
             }
             sources.append(source_info)
         return sources
 
-    def _generate_with_llm(self, query: str, context: str) -> str:
+    def _generate_with_anthropic(self, query: str, context: str) -> str:
+        """Generate answer using Anthropic Claude API."""
+        try:
+            from anthropic import Anthropic
+            
+            client = Anthropic(api_key=self.api_key)
+            
+            prompt = f"""Based on the following context from a document, please answer the user's question directly and concisely.
+
+Context from the document:
+{context}
+
+User's question: {query}
+
+Please provide a clear, direct answer based solely on the information in the context above. If the context doesn't contain enough information to answer the question, say so. Cite specific pages when relevant."""
+
+            message = client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=1000,
+                messages=[{
+                    "role": "user",
+                    "content": prompt
+                }]
+            )
+            
+            return message.content[0].text
+            
+        except ImportError:
+            self.logger.warning("Anthropic library not installed. Using fallback.")
+            return self._generate_smart_fallback(query, None)
+        except Exception as e:
+            self.logger.error(f"Error calling Anthropic API: {e}")
+            return self._generate_smart_fallback(query, None)
+
+    def _generate_smart_fallback(self, query: str, retrieved_docs: List[Dict[str, Any]]) -> str:
         """
-        Generate an answer using an LLM.
-
-        In production, replace with actual API call, for example:
-
-        ```
-        from anthropic import Anthropic
-        client = Anthropic(api_key="your-key")
-
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=1000,
-            messages=[{
-                "role": "user",
-                "content": f"Based on this context:\n{context}\n\nAnswer: {query}"
-            }]
-        )
-        return message.content[0].text
-        ```
-
-        Returns a placeholder response for testing.
-
-        Args:
-            query (str): The user query string.
-            context (str): Concatenated context from retrieved documents.
-
-        Returns:
-            str: Generated answer string.
+        Generate a smart fallback answer by extracting the most relevant content.
+        This is used when LLM API is not available.
         """
-        return (
-            f"Based on the provided documents, here is the answer to "
-            f"'{query}'. [This would be generated by an LLM in production]"
-        )
+        if not retrieved_docs:
+            return "I couldn't find relevant information to answer your question."
+        
+        # Get the top result
+        top_doc = retrieved_docs[0]
+        page = top_doc.get('metadata', {}).get('page', 'unknown')
+        content = top_doc.get('content', '')
+        
+        # Extract the most relevant sentences (simple approach)
+        sentences = content.split('.')
+        relevant_sentences = []
+        query_terms = set(query.lower().split())
+        
+        for sentence in sentences[:10]:  # Look at first 10 sentences
+            sentence_terms = set(sentence.lower().split())
+            overlap = len(query_terms & sentence_terms)
+            if overlap > 0:
+                relevant_sentences.append(sentence.strip())
+        
+        if relevant_sentences:
+            answer = '. '.join(relevant_sentences[:3])  # Take top 3 sentences
+            answer = answer.strip() + '.'
+            answer += f"\n\n(Source: Page {page})"
+            return answer
+        else:
+            # Just return the beginning of the top document
+            preview = content[:500].strip()
+            return f"{preview}...\n\n(Source: Page {page})"

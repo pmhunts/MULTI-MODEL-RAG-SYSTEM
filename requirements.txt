@@ -22,3 +22,6 @@ altair<5
 python-dotenv
 tqdm
 requests
+
+# Anthropic API for Answer Generation
+anthropic
