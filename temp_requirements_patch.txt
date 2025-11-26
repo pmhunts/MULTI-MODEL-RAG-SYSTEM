@@ -1,0 +1,44 @@
+PyPDF2==3.0.1
+pdfplumber==0.10.3
+Pillow==10.1.0
+pytesseract==0.3.10
+sentence-transformers==2.2.2
+transformers==4.35.0
+torch==2.1.0
+chromadb==0.4.18
+numpy==1.24.3
+streamlit==1.28.0
+python-dotenv==1.0.0
+faiss-cpu
+=======
+
+setuptools>=65.0.0
+wheel>=0.38.0
+pip>=23.0.0
+
+# PDF Processing
+PyPDF2==3.0.1
+pdfplumber==0.10.3
+
+# Image Processing
+Pillow==10.1.0
+pytesseract==0.3.10
+
+# ML/AI
+numpy==1.26.4
+torch==2.5.1
+torchvision==0.20.1
+sentence-transformers==3.3.1
+transformers==4.46.3
+
+# Vector Search - FAISS (no build tools needed!)
+faiss-cpu==1.9.0
+
+# Web Framework
+streamlit==1.40.2
+altair<5
+
+# Utilities
+python-dotenv==1.0.0
+tqdm==4.67.1
+requests==2.32.3
