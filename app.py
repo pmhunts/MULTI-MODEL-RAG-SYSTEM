@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Page configuration
 st.set_page_config(
     page_title="Multi-Modal RAG System",
-    page_icon="📚",
+    page_icon=" ",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -63,12 +63,12 @@ def main():
     initialize_session_state()
     
     # Header
-    st.markdown('<div class="main-header">🤖 Multi-Modal RAG System</div>', unsafe_allow_html=True)
+    st.markdown('<div class="main-header"> Multi-Modal RAG System</div>', unsafe_allow_html=True)
     st.markdown('<div class="sub-header">Advanced Document Understanding with Text, Tables, and Images</div>', unsafe_allow_html=True)
     
     # Sidebar for document upload
     with st.sidebar:
-        st.header("📄 Document Upload")
+        st.header(" Document Upload")
         st.markdown("Upload a PDF document to get started")
         
         uploaded_file = st.file_uploader(
@@ -78,16 +78,16 @@ def main():
         )
         
         if uploaded_file is not None:
-            st.success(f"📎 File loaded: {uploaded_file.name}")
+            st.success(f" File loaded: {uploaded_file.name}")
             st.info(f"Size: {uploaded_file.size / 1024:.1f} KB")
             
-            if st.button("🚀 Process Document", type="primary", use_container_width=True):
+            if st.button(" Process Document", type="primary", use_container_width=True):
                 process_document(uploaded_file)
         
         st.markdown("---")
         
         # Settings
-        st.header("⚙️ Settings")
+        st.header(" Settings")
         chunk_size = st.slider("Chunk Size", 256, 1024, 512, 128)
         top_k = st.slider("Retrieved Chunks", 3, 10, 5, 1)
         search_type = st.selectbox("Search Type", ["Hybrid Search", "Vector Only"])
@@ -109,12 +109,12 @@ def main():
         
         # Stats
         if st.session_state['vector_store'] is not None:
-            st.header("📊 Statistics")
+            st.header(" Statistics")
             stats = st.session_state['vector_store'].get_stats()
             st.metric("Total Vectors", stats['total_vectors'])
             st.metric("Documents", stats['total_documents'])
             
-            if st.button("🗑️ Clear Database", use_container_width=True):
+            if st.button(" Clear Database", use_container_width=True):
                 st.session_state['vector_store'].clear()
                 st.session_state['vector_store'] = None
                 st.session_state['processed_file'] = None
@@ -132,30 +132,30 @@ def show_welcome_screen():
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.markdown("### 📝 Text Processing")
+        st.markdown("Text Processing")
         st.write("Extracts and indexes text content from PDFs with semantic understanding")
         
     with col2:
-        st.markdown("### 📊 Table Extraction")
+        st.markdown("Table Extraction")
         st.write("Detects and processes tables, making data searchable and queryable")
         
     with col3:
-        st.markdown("### 🖼️ Image OCR")
+        st.markdown("Image OCR")
         st.write("Extracts text from images and charts using OCR technology")
     
     st.markdown("---")
     
-    st.markdown("### 🎯 How to Use")
+    st.markdown("How to Use")
     st.markdown("""
-    1. **Upload a PDF** using the sidebar
-    2. **Process the document** to extract and index all content
-    3. **Ask questions** about the document content
-    4. **Get answers** with source citations and confidence scores
+    1. Upload a PDF using the sidebar
+    2. Process the document to extract and index all content
+    3. Ask questions about the document content
+    4. Get answers with source citations and confidence scores
     """)
     
     st.markdown("---")
     
-    st.markdown("### 💡 Sample Questions")
+    st.markdown("Sample Questions")
     st.code("""
 • "What is the main topic of this document?"
 • "Summarize the key findings"
@@ -163,7 +163,7 @@ def show_welcome_screen():
 • "What are the recommendations?"
     """)
     
-    st.info("👈 Start by uploading a PDF document in the sidebar")
+    st.info(" Start by uploading a PDF document in the sidebar")
 
 def process_document(uploaded_file):
     """Process uploaded document"""
@@ -173,10 +173,10 @@ def process_document(uploaded_file):
         from chunking.semantic_chunker import SemanticChunker
         from embedding.multimodal_vector_store import MultiModalVectorStore
     except ImportError as e:
-        st.error(f"❌ Missing required modules: {str(e)}")
+        st.error(f" Missing required modules: {str(e)}")
         return
     
-    with st.spinner("🔄 Processing document... This may take a minute."):
+    with st.spinner(" Processing document... This may take a minute."):
         try:
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pdf') as tmp_file:
                 tmp_file.write(uploaded_file.getvalue())
@@ -185,19 +185,19 @@ def process_document(uploaded_file):
             progress_bar = st.progress(0)
             status_text = st.empty()
             
-            status_text.text("📖 Parsing document...")
+            status_text.text(" Parsing document...")
             progress_bar.progress(20)
             parser = MultiModalParser()
             elements = parser.parse_document(tmp_path)
             
-            status_text.text("🔍 Running OCR on images...")
+            status_text.text(" Running OCR on images...")
             progress_bar.progress(40)
             ocr_engine = OCREngine()
             for elem in elements:
                 if elem.type == 'image':
                     elem.metadata['ocr_text'] = ocr_engine.extract_text_from_image(elem.content)
             
-            status_text.text("✂️ Chunking content...")
+            status_text.text(" Chunking content...")
             progress_bar.progress(60)
             chunk_size = st.session_state.get('chunk_size', 512)
             chunker = SemanticChunker(chunk_size=chunk_size, overlap=50)
@@ -216,7 +216,7 @@ def process_document(uploaded_file):
                         'ocr_text': elem.metadata['ocr_text']
                     })
             
-            status_text.text("🗄️ Indexing in vector database...")
+            status_text.text(" Indexing in vector database...")
             progress_bar.progress(80)
             vector_store = MultiModalVectorStore(collection_name=uploaded_file.name.replace('.pdf', ''))
             vector_store.add_documents(chunks)
@@ -230,16 +230,16 @@ def process_document(uploaded_file):
             
             os.unlink(tmp_path)
             
-            st.success(f"✅ Processed {len(elements)} elements into {len(chunks)} searchable chunks!")
+            st.success(f" Processed {len(elements)} elements into {len(chunks)} searchable chunks!")
             st.balloons()
             st.rerun()
             
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f" Error: {str(e)}")
 
 def show_qa_interface():
     """Display Q&A interface"""
-    st.markdown(f"### 💬 Ask Questions About: {st.session_state['processed_file']}")
+    st.markdown(f"###  Ask Questions About: {st.session_state['processed_file']}")
     
     if 'current_query' not in st.session_state:
         st.session_state['current_query'] = ''
@@ -253,13 +253,13 @@ def show_qa_interface():
     
     col1, col2 = st.columns([3, 1])
     with col1:
-        search_button = st.button("🔍 Search", type="primary", use_container_width=True)
+        search_button = st.button(" Search", type="primary", use_container_width=True)
     with col2:
-        if st.button("🗑️ Clear", use_container_width=True):
+        if st.button(" Clear", use_container_width=True):
             st.session_state['current_query'] = ''
             st.rerun()
     
-    st.markdown("**💡 Try these:**")
+    st.markdown(" Try these:**")
     sample_cols = st.columns(3)
     samples = ["What is the main topic?", "Summarize key findings", "What projects are mentioned?"]
     
@@ -273,7 +273,7 @@ def show_qa_interface():
 
 def perform_search(query):
     """Perform search and display results"""
-    with st.spinner("🔍 Generating answer..."):
+    with st.spinner(" Generating answer..."):
         try:
             from generation.qa_engine import QAEngine
 
@@ -290,7 +290,7 @@ def perform_search(query):
             )
             
             # Display answer prominently
-            st.markdown("### 💡 Answer")
+            st.markdown(" Answer")
             st.markdown(f"""
             <div class="answer-box">
                 <div class="answer-text">{result['answer']}</div>
@@ -307,7 +307,7 @@ def perform_search(query):
             
             # Sources
             if result['sources']:
-                st.markdown("### 📚 Source References")
+                st.markdown(" Source References")
                 for i, source in enumerate(result['sources'], 1):
                     conf = source.get('confidence', 0) * 100
                     badge = "🟢" if conf > 70 else "🟡" if conf > 50 else "🟠"
@@ -319,10 +319,10 @@ def perform_search(query):
                         st.info(source['content'])
                         
         except ImportError:
-            st.warning("⚠️ Using basic search mode")
+            st.warning(" Using basic search mode")
             show_basic_search(query)
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f" Error: {str(e)}")
 
 def show_basic_search(query):
     """Basic search fallback"""
@@ -339,7 +339,7 @@ def show_basic_search(query):
         st.warning("No results found.")
         return
     
-    st.markdown("### 💡 Answer")
+    st.markdown(" Answer")
     top = results[0]
     answer = top['content'][:500] + "..."
     
@@ -351,7 +351,7 @@ def show_basic_search(query):
     """, unsafe_allow_html=True)
     
     st.markdown("---")
-    st.markdown("### 📚 Additional Sources")
+    st.markdown(" Additional Sources")
     
     for i, result in enumerate(results[1:], 2):
         score = result.get('hybrid_score', 0.5)
